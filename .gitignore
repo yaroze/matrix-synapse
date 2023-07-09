@@ -1,0 +1,6 @@
+postgres
+synapse
+postgres
+traefik
+.env
+.docker-compose.real.yml

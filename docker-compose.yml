@@ -1,0 +1,83 @@
+services:
+  reverse-proxy:
+    image: traefik:v2.10
+    ports:
+      # The HTTP port
+      - "80:80"
+      # HTTPS
+      - "443:443"
+      # The Web UI (enabled by --api.insecure=true)
+      - "8080:8080"
+      # Synapse server-server comms
+      - "8448:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - $PWD/traefik:/storage
+        #labels:
+    environment:
+      - TRAEFIK_PROVIDERS_DOCKER=true
+      - CF_API_EMAIL=xxxx
+      - CF_API_KEY=xxxx
+    command:
+      - '--entryPoints.web.address=:80'
+      - '--entryPoints.websecure.address=:443'
+      - '--api.insecure=true'
+      - '--providers.docker'
+      - '--certificatesResolvers.le.acme.email=xxxx@yaroze.org'
+      - '--certificatesResolvers.le.acme.storage=/storage/acme.json'
+      - '--certificatesresolvers.le.acme.tlschallenge=true'
+      #- '--certificatesResolvers.le.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory'
+
+
+  synapse:
+    build:
+        context: ../..
+        dockerfile: docker/Dockerfile
+    image: docker.io/matrixdotorg/synapse:latest
+    restart: unless-stopped
+    environment:
+      - SYNAPSE_CONFIG_PATH=/data/homeserver.yaml
+      - SYNAPSE_SERVER=synapse.yaroze.org
+      - SYNAPSE_REPORT_STATS=yes
+    volumes:
+      - $PWD/synapse/data:/data:rw
+      
+    depends_on:
+      - postgres
+    ports:
+      - 8008:8008/tcp
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.http-synapse.entryPoints=web
+      - traefik.http.routers.http-synapse.rule=Host(`synapse.yaroze.org`)
+      - traefik.http.middlewares.https_redirect.redirectscheme.scheme=https
+      - traefik.http.middlewares.https_redirect.redirectscheme.permanent=true
+      - traefik.http.routers.http-synapse.middlewares=https_redirect
+      - traefik.http.routers.https-synapse.entryPoints=websecure
+      - traefik.http.routers.https-synapse.rule=Host(`synapse.yaroze.org`)
+      - traefik.http.routers.https-synapse.service=synapse
+      - traefik.http.routers.https-synapse.tls=true
+      - traefik.http.services.synapse.loadbalancer.server.port=8008
+      - traefik.http.routers.https-synapse.tls.certResolver=le
+
+  postgres:
+    image: docker.io/postgres:12-alpine
+    environment:
+      - POSTGRES_USER=xxxx
+      - POSTGRES_PASSWORD=xxxx
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+      
+  nginx:
+    image: nginx:latest
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.frontend.rule=Host:yaroze.org"
+      - "traefik.frontend.passHostHeader=true"
+      - "traefik.port=80"
+      - "traefik.docker.network=web"
+    volumes:
+      - ./nginx/matrix.conf:/etc/nginx/vhost.d/matrix.conf
+      - ./nginx/www:/var/www/
