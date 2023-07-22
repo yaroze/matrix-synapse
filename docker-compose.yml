@@ -1,6 +1,8 @@
 services:
-  reverse-proxy:
+  traefik:
     image: traefik:v2.10
+    networks:
+      - synapse
     ports:
       # The HTTP port
       - "80:80"
@@ -12,27 +14,29 @@ services:
       - "8448:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - $PWD/traefik:/storage
+      - /home/ubuntu/synapse/traefik:/storage
         #labels:
     environment:
       - TRAEFIK_PROVIDERS_DOCKER=true
-      - CF_API_EMAIL=xxxx
-      - CF_API_KEY=xxxx
+      - CF_API_EMAIL=
+      - CF_API_KEY=
     command:
       - '--entryPoints.web.address=:80'
       - '--entryPoints.websecure.address=:443'
       - '--api.insecure=true'
       - '--providers.docker'
-      - '--certificatesResolvers.le.acme.email=xxxx@yaroze.org'
+      - '--certificatesResolvers.le.acme.email=pedro@yaroze.org'
       - '--certificatesResolvers.le.acme.storage=/storage/acme.json'
       - '--certificatesresolvers.le.acme.tlschallenge=true'
-      #- '--certificatesResolvers.le.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory'
-
-
+       #- '--certificatesResolvers.le.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory'
+  
+  
   synapse:
-    build:
-        context: ../..
-        dockerfile: docker/Dockerfile
+    networks:
+      - synapse
+  #build:
+  #  context: ../..
+  #  dockerfile: docker/Dockerfile
     image: docker.io/matrixdotorg/synapse:latest
     restart: unless-stopped
     environment:
@@ -40,10 +44,11 @@ services:
       - SYNAPSE_SERVER=synapse.yaroze.org
       - SYNAPSE_REPORT_STATS=yes
     volumes:
-      - $PWD/synapse/data:/data:rw
-      
+     - /home/ubuntu/synapse/synapse/data:/data:rw
+     - /home/ubuntu/synapse/mautrix-signal/registration.yaml:/mautrix-signal/registration.yaml:rw
+     - /home/ubuntu/synapse/mautrix-whatsapp/registration.yaml:/mautrix-whatsapp/registration.yaml:rw
     depends_on:
-      - postgres
+     - postgres
     ports:
       - 8008:8008/tcp
     labels:
@@ -59,17 +64,24 @@ services:
       - traefik.http.routers.https-synapse.tls=true
       - traefik.http.services.synapse.loadbalancer.server.port=8008
       - traefik.http.routers.https-synapse.tls.certResolver=le
-
+  
   postgres:
+    networks:
+      - synapse
     image: docker.io/postgres:12-alpine
+    ports: 
+      - 127.0.0.1:5432:5432
     environment:
-      - POSTGRES_USER=xxxx
-      - POSTGRES_PASSWORD=xxxx
+      - POSTGRES_USER=synapse
+      - POSTGRES_DB=synapse
+      - POSTGRES_PASSWORD=
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
     volumes:
       - ./postgres/data:/var/lib/postgresql/data
-      
+        
   nginx:
+    networks:
+      - synapse
     image: nginx:latest
     restart: unless-stopped
     labels:
@@ -81,3 +93,34 @@ services:
     volumes:
       - ./nginx/matrix.conf:/etc/nginx/vhost.d/matrix.conf
       - ./nginx/www:/var/www/
+  
+
+  signald:
+    networks:
+      - synapse
+    image: registry.gitlab.com/signald/signald
+    restart: unless-stopped
+    volumes:
+      - /home/ubuntu/synapse/signald:/signald:rw
+
+  signal-mautrix:
+    networks:
+      - synapse
+    image: dock.mau.dev/mautrix/signal:latest
+    restart: unless-stopped
+    depends_on:
+     - signald
+    volumes:
+      - /home/ubuntu/synapse/mautrix-signal:/data:z
+      - /home/ubuntu/synapse/signald:/signald:z
+
+  whatsapp-mautrix:
+    networks:
+      - synapse
+    image: dock.mau.dev/mautrix/whatsapp:latest
+    restart: unless-stopped
+    volumes:
+      - /home/ubuntu/synapse/mautrix-whatsapp:/data:rw
+
+networks:
+  synapse:

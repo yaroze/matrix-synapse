@@ -4,3 +4,5 @@ postgres
 traefik
 .env
 .docker-compose.real.yml
+mautrix-*
+signald
