@@ -1,8 +1,8 @@
 services:
   traefik:
     image: traefik:v2.10
-    networks:
-      - synapse
+    restart: unless-stopped
+    container_name: "traefik"
     ports:
       # The HTTP port
       - "80:80"
@@ -14,113 +14,171 @@ services:
       - "8448:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /home/ubuntu/synapse/traefik:/storage
+      - /home/hydra/synapse/traefik:/storage
         #labels:
     environment:
       - TRAEFIK_PROVIDERS_DOCKER=true
-      - CF_API_EMAIL=
-      - CF_API_KEY=
+      - CF_API_EMAIL=xxxx
+      - CF_API_KEY=xxxx
     command:
-      - '--entryPoints.web.address=:80'
-      - '--entryPoints.websecure.address=:443'
-      - '--api.insecure=true'
-      - '--providers.docker'
-      - '--certificatesResolvers.le.acme.email=pedro@yaroze.org'
-      - '--certificatesResolvers.le.acme.storage=/storage/acme.json'
-      - '--certificatesresolvers.le.acme.tlschallenge=true'
-       #- '--certificatesResolvers.le.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory'
-  
-  
+      #- "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.tlschallenge=true"
+      #- "--certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.le.acme.email=pedro@yaroze.org"
+      - "--certificatesresolvers.le.acme.storage=/storage/acme.json"
+
   synapse:
-    networks:
-      - synapse
-  #build:
-  #  context: ../..
-  #  dockerfile: docker/Dockerfile
+    #networks:
+    #  - synapse
     image: docker.io/matrixdotorg/synapse:latest
     restart: unless-stopped
+    container_name: "synapse"
     environment:
       - SYNAPSE_CONFIG_PATH=/data/homeserver.yaml
       - SYNAPSE_SERVER=synapse.yaroze.org
       - SYNAPSE_REPORT_STATS=yes
     volumes:
-     - /home/ubuntu/synapse/synapse/data:/data:rw
-     - /home/ubuntu/synapse/mautrix-signal/registration.yaml:/mautrix-signal/registration.yaml:rw
-     - /home/ubuntu/synapse/mautrix-whatsapp/registration.yaml:/mautrix-whatsapp/registration.yaml:rw
+     - /home/hydra/synapse/synapse/data:/data:rw
+     - /home/hydra/synapse/mautrix-signal/registration.yaml:/mautrix-signal/registration.yaml:rw
+     - /home/hydra/synapse/mautrix-whatsapp/registration.yaml:/mautrix-whatsapp/registration.yaml:rw
     depends_on:
      - postgres
-    ports:
-      - 8008:8008/tcp
+       #ports:
+       #- 8008:8008/tcp
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.http-synapse.entryPoints=web
-      - traefik.http.routers.http-synapse.rule=Host(`synapse.yaroze.org`)
-      - traefik.http.middlewares.https_redirect.redirectscheme.scheme=https
-      - traefik.http.middlewares.https_redirect.redirectscheme.permanent=true
-      - traefik.http.routers.http-synapse.middlewares=https_redirect
-      - traefik.http.routers.https-synapse.entryPoints=websecure
-      - traefik.http.routers.https-synapse.rule=Host(`synapse.yaroze.org`)
-      - traefik.http.routers.https-synapse.service=synapse
-      - traefik.http.routers.https-synapse.tls=true
-      - traefik.http.services.synapse.loadbalancer.server.port=8008
-      - traefik.http.routers.https-synapse.tls.certResolver=le
-  
+      - "traefik.enable=true"
+      - "traefik.http.routers.synapse.rule=Host(`synapse.yaroze.org`)"
+      - "traefik.http.routers.synapse.entrypoints=websecure"
+      - "traefik.http.routers.synapse.tls.certresolver=le"
+      #- 'traefik.http.routers.http-synapse.entryPoints=web'
+      #- 'traefik.http.routers.http-synapse.rule=Host(`synapse.yaroze.org`)'
+        #- 'traefik.http.middlewares.https_redirect.redirectscheme.scheme=https'
+        #- 'traefik.http.middlewares.https_redirect.redirectscheme.permanent=true'
+        #- 'traefik.http.routers.http-synapse.middlewares=https_redirect'
+      #- 'traefik.http.routers.https-synapse.entryPoints=websecure'
+      #- 'traefik.http.routers.https-synapse.rule=Host(`synapse.yaroze.org`)'
+      #- 'traefik.http.routers.https-synapse.service=nginx'
+      #- 'traefik.http.routers.https-synapse.tls=true'
+      #- 'traefik.http.services.synapse.loadbalancer.server.port=8008'
+      #- 'traefik.http.routers.https-synapse.tls.certResolver=le'
+ 
+ 
   postgres:
-    networks:
-      - synapse
+    restart: unless-stopped
+      #networks:
+      #- synapse
     image: docker.io/postgres:12-alpine
+    container_name: "postgres"
     ports: 
       - 127.0.0.1:5432:5432
     environment:
       - POSTGRES_USER=synapse
       - POSTGRES_DB=synapse
-      - POSTGRES_PASSWORD=
+      - POSTGRES_PASSWORD=xxxx
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
     volumes:
-      - ./postgres/data:/var/lib/postgresql/data
+      - /home/hydra/synapse/postgres/data:/var/lib/postgresql/data
         
   nginx:
-    networks:
-      - synapse
-    image: nginx:latest
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.frontend.rule=Host:yaroze.org"
-      - "traefik.frontend.passHostHeader=true"
-      - "traefik.port=80"
-      - "traefik.docker.network=web"
-    volumes:
-      - ./nginx/matrix.conf:/etc/nginx/vhost.d/matrix.conf
-      - ./nginx/www:/var/www/
-  
+    #networks:
+   # - synapse
+   image: nginx:latest
+   restart: unless-stopped
+   container_name: "nginx"
 
+   labels:
+     - "traefik.enable=true"
+     #- "traefik.frontend.rule=Host:yaroze.org"
+     #- "traefik.frontend.passHostHeader=true"
+     #- "traefik.port=80"
+     #- "traefik.docker.network=web"
+     #- 'traefik.http.routers.synapse.entryPoints=websecure'
+     #- 'traefik.http.routers.synapse.rule=Host(`synapse.yaroze.org`)'
+   volumes:
+     - /home/hydra/synapse/nginx/matrix.conf:/etc/nginx/vhost.d/matrix.conf
+     - /home/hydra/synapse/nginx/www:/var/www/
+ 
+  
   signald:
-    networks:
-      - synapse
+    #networks:
+    #  - synapse
     image: registry.gitlab.com/signald/signald
     restart: unless-stopped
-    volumes:
-      - /home/ubuntu/synapse/signald:/signald:rw
+    container_name: "signald"
 
-  signal-mautrix:
-    networks:
-      - synapse
+    volumes:
+      - /home/hydra/synapse/signald:/signald:rw
+    labels:
+      - traefik.enable=false
+
+
+  mautrix-signal:
+    #networks:
+    #  - synapse
     image: dock.mau.dev/mautrix/signal:latest
     restart: unless-stopped
+    container_name: "signal-mautrix"
     depends_on:
      - signald
     volumes:
-      - /home/ubuntu/synapse/mautrix-signal:/data:z
-      - /home/ubuntu/synapse/signald:/signald:z
+      - /home/hydra/synapse/mautrix-signal:/data:z
+      - /home/hydra/synapse/signald:/signald:z
+    labels:
+      - traefik.enable=false
 
-  whatsapp-mautrix:
-    networks:
-      - synapse
+
+  mautrix-whatsapp:
+    #networks:
+    #  - synapse
     image: dock.mau.dev/mautrix/whatsapp:latest
     restart: unless-stopped
-    volumes:
-      - /home/ubuntu/synapse/mautrix-whatsapp:/data:rw
+    container_name: "whatsapp-mautrix"
 
+    volumes:
+      - /home/hydra/synapse/mautrix-whatsapp:/data:rw
+    labels:
+      - traefik.enable=false
+
+
+
+#  rundeck:
+#    image: rundeck:latest
+#    networks:
+#      - rundeck
+#    build:
+#      context: /home/hydra/rundeck/
+#      dockerfile: Dockerfile
+#      tags: 
+#        - rundeck:latest
+#    depends_on:
+#     - traefik
+#    ports:
+#      # The HTTP port
+#      - "4440:4440"
+#    environment:
+#      - RUNDECK_GRAILS_URL=http://rundeck.pedrofarinha.me
+#      - RUNDECK_SERVER_ADDRESS=0.0.0.0
+#      #- RUNDECK_MULTIURL.ENABLED=true
+#    volumes:
+#      - /home/hydra/rundeck/data:/storage
+#    command:
+#      - traefik.enable=true
+#      - traefik.http.routers.http-rundeck.entryPoints=web
+#      - traefik.http.routers.http-rundeck.rule=Host(`rundeck.pedrofarinha.me`)
+#      - traefik.http.middlewares.https_redirect.redirectscheme.scheme=https
+#      - traefik.http.middlewares.https_redirect.redirectscheme.permanent=true
+#      - traefik.http.routers.http-rundeck.middlewares=https_redirect
+#      - traefik.http.routers.https-rundeck.entryPoints=websecure
+#      - traefik.http.routers.https-rundeck.rule=Host(`rundeck.pedrofarinha.me`)
+#      - traefik.http.routers.https-rundeck.service=rundeck
+#      - traefik.http.routers.https-rundeck.tls=true
+#      - traefik.http.services.rundeck.loadbalancer.server.port=4440
+#      - traefik.http.routers.https-rundeck.tls.certResolver=le
+#  
+  
 networks:
   synapse:
